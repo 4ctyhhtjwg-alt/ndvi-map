@@ -27,7 +27,7 @@
  <label><input type="checkbox" id="ov" checked> オーバーレイ</label>
 </div>
 <div id="map"></div>
-<div id="info">地図をクリックしてNDVIを取得します。<div id="mk" style="display:none;flex-wrap:wrap;gap:4px 8px;margin-top:6px;font-size:12px"><label style="color:#8d6e63">播種日<br><input type="date" id="d1" style="font-size:12px;width:112px"></label><label style="color:#e65100">出穂日<br><input type="date" id="d2" style="font-size:12px;width:112px"></label><label style="color:#6a1b9a">成熟期<br><input type="date" id="d3" style="font-size:12px;width:112px"></label></div><canvas id="ch" style="display:none;width:100%;height:170px;margin-top:6px"></canvas><div id="legend"></div><div><span>0</span><span>0.5</span><span>1.0</span></div></div>
+<div id="info">地図をクリックしてNDVIを取得します。<div id="mk" style="display:none;flex-wrap:wrap;gap:4px 8px;margin-top:6px;font-size:12px"><label style="color:#8d6e63">播種日<br><input type="date" id="d1" style="font-size:12px;width:112px"></label><label style="color:#1565c0">幼穂形成始期<br><input type="date" id="d4" style="font-size:12px;width:112px"></label><label style="color:#e65100">出穂日<br><input type="date" id="d2" style="font-size:12px;width:112px"></label><label style="color:#6a1b9a">成熟期<br><input type="date" id="d3" style="font-size:12px;width:112px"></label></div><canvas id="ch" style="display:none;width:100%;height:170px;margin-top:6px"></canvas><div id="legend"></div><div><span>0</span><span>0.5</span><span>1.0</span></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
@@ -109,7 +109,7 @@ async function doPoint(s){
 }
 
 let base='',runId=0,sel=null,win=null;
-const MK=[['d1','播種','#8d6e63'],['d2','出穂','#e65100'],['d3','成熟','#6a1b9a']];
+const MK=[['d1','播種','#8d6e63'],['d2','出穂','#e65100'],['d3','成熟','#6a1b9a'],['d4','幼穂形成始期','#1565c0']];
 const mk=()=>MK.map(([id,n,c])=>({n,c,t:$(id).value?new Date($(id).value+'T00:00:00').getTime():null})).filter(o=>o.t);
 function range(){const t1=Date.now(),t0=t1-$('days').value*864e5,m=mk().map(o=>o.t);return {t0:Math.min(t0,...m),t1:Math.max(t1,...m)}}
 try{const v=JSON.parse(localStorage.getItem('ndvi_mk')||'[]');MK.forEach(([id],i)=>{if(v[i])$(id).value=v[i]})}catch(e){}
