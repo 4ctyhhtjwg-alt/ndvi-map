@@ -20,7 +20,7 @@
 <body>
 <div id="bar">
  <button id="m1" class="on">点で取得</button>
- <button id="m2">範囲で取得</button>
+ <button id="m2">範囲で取得</button><button id="m3">＋地点B</button><button id="mb" style="display:none">B消去</button>
  <input id="q" placeholder="地名・住所" size="12"><button id="go">検索</button>
  <select id="days"><option value="30">過去30日</option><option value="60">過去60日</option><option value="120">過去120日</option><option value="365" selected>過去1年</option></select>
  <select id="cloud"><option value="10">雲量&lt;10%</option><option value="30" selected>雲量&lt;30%</option><option value="60">雲量&lt;60%</option></select>
@@ -28,7 +28,7 @@
  <label><input type="checkbox" id="ov" checked> オーバーレイ</label>
 </div>
 <div id="map"></div>
-<div id="info">地図をクリックしてNDVIを取得します。<div id="mk" style="display:none;flex-wrap:wrap;gap:4px 8px;margin-top:6px;font-size:12px"><label style="color:#8d6e63">播種日<br><input type="date" id="d1" style="font-size:12px;width:112px"></label><label style="color:#1565c0">幼穂形成始期<br><input type="date" id="d4" style="font-size:12px;width:112px"></label><label style="color:#e65100">出穂日<br><input type="date" id="d2" style="font-size:12px;width:112px"></label><label style="color:#6a1b9a">成熟期<br><input type="date" id="d3" style="font-size:12px;width:112px"></label></div><canvas id="ch" style="display:none;width:100%;height:170px;margin-top:6px"></canvas><div id="tw" style="display:none"><div id="tc" style="margin-top:6px;font-size:12px;line-height:1.5"></div><details style="font-size:11px;margin-top:2px"><summary>気象庁観測所の設定</summary><select id="stt"><option value="s1">気象官署(s1)</option><option value="a1">アメダス(a1)</option></select> 都府県番号<input id="stp" size="3" value="87"> 地点番号<input id="stb" size="6" value="47830"><br>中継URL(任意)<input id="stx" style="width:100%" placeholder="https://〜.workers.dev/?url="></details></div><div id="legend"></div><div><span>0</span><span>0.5</span><span>1.0</span></div></div>
+<div id="info">地図をクリックしてNDVIを取得します。<div id="mk" style="display:none;flex-wrap:wrap;gap:4px 8px;margin-top:6px;font-size:12px"><label style="color:#8d6e63">播種日<br><input type="date" id="d1" style="font-size:12px;width:112px"></label><label style="color:#1565c0">幼穂形成始期<br><input type="date" id="d4" style="font-size:12px;width:112px"></label><label style="color:#e65100">出穂日<br><input type="date" id="d2" style="font-size:12px;width:112px"></label><label style="color:#6a1b9a">成熟期<br><input type="date" id="d3" style="font-size:12px;width:112px"></label></div><canvas id="ch" style="display:none;width:100%;height:170px;margin-top:6px"></canvas><div id="tw" style="display:none"><div id="lg" style="font-size:12px;margin-top:4px"></div><div id="tc" style="margin-top:6px;font-size:12px;line-height:1.5"></div><details style="font-size:11px;margin-top:2px"><summary>気象庁観測所の設定</summary><select id="stt"><option value="s1">気象官署(s1)</option><option value="a1">アメダス(a1)</option></select> 都府県番号<input id="stp" size="3" value="87"> 地点番号<input id="stb" size="6" value="47830"><br>中継URL(任意)<input id="stx" style="width:100%" placeholder="https://〜.workers.dev/?url="></details></div><div id="legend"></div><div><span>0</span><span>0.5</span><span>1.0</span></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
@@ -43,14 +43,15 @@ L.control.layers({'衛星写真':sat,'地図':osm}).addTo(map);
 
 let mode=1, corner=null, geom=null, scenes=[], marker=null, rect=null, overlay=null;
 $('m1').onclick=()=>setMode(1); $('m2').onclick=()=>setMode(2);
-function setMode(m){mode=m;corner=null;$('m1').classList.toggle('on',m==1);$('m2').classList.toggle('on',m==2);
- setMsg(m==1?'地図をクリックしてNDVIを取得します。':'範囲の対角2点をクリックしてください。')}
+function setMode(m){mode=m;corner=null;$('m1').classList.toggle('on',m==1);$('m2').classList.toggle('on',m==2);$('m3').classList.toggle('on',m==3);
+ setMsg(m==1?'地図をクリックしてNDVIを取得します。':m==2?'範囲の対角2点をクリックしてください。':'比較する地点Bをクリックしてください。')}
 
 $('go').onclick=async()=>{const q=$('q').value.trim();if(!q)return;
  const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q));
  const j=await r.json(); j[0]?map.setView([+j[0].lat,+j[0].lon],14):setMsg('見つかりませんでした');};
 
 map.on('click',async e=>{
+ if(mode==3){setB(e.latlng);mode=1;$('m3').classList.remove('on');$('m1').classList.add('on');return}
  if(mode==1){geom={t:'p',ll:e.latlng};clearShapes();marker=L.circleMarker(e.latlng,{radius:6,color:'#fff',fillColor:'#e91e63',fillOpacity:1}).addTo(map);await refresh(true)}
  else if(!corner){corner=e.latlng;setMsg('もう1点をクリックしてください。')}
  else{const b=L.latLngBounds(corner,e.latlng);corner=null;geom={t:'r',b};clearShapes();
@@ -61,8 +62,8 @@ $('scene').onchange=()=>refresh(false);
 $('ov').onchange=()=>{if(overlay)$('ov').checked?overlay.addTo(map):map.removeLayer(overlay)};
 $('days').onchange=$('cloud').onchange=()=>geom&&refresh(true);
 
-async function search(){
- const c=geom.t=='p'?geom.ll:geom.b.getCenter(), rg=range(), start=new Date(rg.t0), end=new Date(rg.t1+864e5); win=rg;
+async function search(ll){
+ const c=ll||(geom.t=='p'?geom.ll:geom.b.getCenter()), rg=range(), start=new Date(rg.t0), end=new Date(rg.t1+864e5); if(!ll)win=rg;
  const body={collections:['sentinel-2-l2a'],intersects:{type:'Point',coordinates:[c.lng,c.lat]},
   datetime:start.toISOString()+'/'+end.toISOString(),query:{'eo:cloud_cover':{lt:+$('cloud').value}},limit:geom.t=='p'?200:25,
   sort:[{field:'properties.datetime',direction:'desc'}]};
@@ -77,7 +78,7 @@ async function refresh(newSearch){
    $('scene').innerHTML=scenes.map((s,i)=>`<option value="${i}">${s.properties.datetime.slice(0,10)} (雲${Math.round(s.properties['eo:cloud_cover'])}%)</option>`).join('')||'<option>該当なし</option>';
    if(!scenes.length){setMsg('条件に合うシーンがありません。期間や雲量を緩めてください。');return}}
   const s=scenes[+$('scene').value]; setMsg('NDVIを計算中…');
-  if(geom.t=='p'){await doPoint(s);if(newSearch)series()}else await doRect(s);
+  if(geom.t=='p'){await doPoint(s);if(newSearch){series();if(needB())seriesB()}}else await doRect(s);
  }catch(err){console.error(err);setMsg('エラー: '+err.message)}
 }
 
@@ -137,25 +138,26 @@ async function series(){
 }
 $('ch').addEventListener('click',e=>{const cv=$('ch'),r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
  let best=null,bd=1e9;(cv._pts||[]).forEach(o=>{const d=Math.hypot(o.x-x,o.y-y);if(d<bd){bd=d;best=o}});
- if(best&&bd<30){sel=best.p.t.getTime();draw(cv._raw)}});
+ if(best&&bd<30){sel=best.s+best.p.t.getTime();draw(cv._raw)}});
 function draw(pts){
  const cv=$('ch'),dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;cv.width=W*dpr;cv.height=H*dpr;
  const g=cv.getContext('2d');g.scale(dpr,dpr);
  const P=[...pts].sort((a,b)=>a.t-b.t),m={l:28,r:8,t:8,b:18},{t0,t1}=range();
- const lo=Math.min(0,...P.map(p=>p.v)),X=t=>m.l+(t-t0)/(t1-t0)*(W-m.l-m.r),Y=v=>m.t+(1-(v-lo))/(1-lo)*(H-m.t-m.b);
+ const PB=B?[...B.pts].sort((a,b)=>a.t-b.t):[],lo=Math.min(0,...P.map(p=>p.v),...PB.map(p=>p.v)),X=t=>m.l+(t-t0)/(t1-t0)*(W-m.l-m.r),Y=v=>m.t+(1-(v-lo))/(1-lo)*(H-m.t-m.b);
  g.font='10px sans-serif';g.fillStyle='#555';g.strokeStyle='#ddd';g.lineWidth=1;
  for(let v=Math.ceil(lo*5)/5;v<=1.001;v+=.2){g.beginPath();g.moveTo(m.l,Y(v));g.lineTo(W-m.r,Y(v));g.stroke();g.fillText(v.toFixed(1),2,Y(v)+3)}
  for(let k=0;k<=3;k++){const t=new Date(t0+(t1-t0)*k/3);g.fillText(`${t.getMonth()+1}/${t.getDate()}`,Math.min(X(+t)-8,W-30),H-4)}
  mk().filter(o=>o.t>=t0&&o.t<=t1).forEach((o,i)=>{const x=X(o.t),d=new Date(o.t),t=`${o.n} ${d.getMonth()+1}/${d.getDate()}`;
   g.strokeStyle=o.c;g.lineWidth=1.5;g.setLineDash([4,3]);g.beginPath();g.moveTo(x,m.t);g.lineTo(x,H-m.b);g.stroke();g.setLineDash([]);
   g.font='bold 10px sans-serif';const w=g.measureText(t).width;g.fillStyle=o.c;g.fillText(t,x+w+4>W-m.r?x-w-3:x+3,m.t+10+i*11)});
- cv._raw=pts;cv._pts=P.map(p=>({p,x:X(p.t),y:Y(p.v)}));
- if(!P.length){g.fillText('取得中…',m.l+10,H/2);return}
+ cv._raw=pts;cv._pts=P.map(p=>({s:'A',p,x:X(p.t),y:Y(p.v)})).concat(PB.map(p=>({s:'B',p,x:X(p.t),y:Y(p.v)})));
+ if(!P.length&&!PB.length){g.fillText('取得中…',m.l+10,H/2);return}
  g.strokeStyle='#2e7d32';g.lineWidth=1.5;g.beginPath();P.forEach((p,k)=>k?g.lineTo(X(p.t),Y(p.v)):g.moveTo(X(p.t),Y(p.v)));g.stroke();
  g.fillStyle='#2e7d32';P.forEach(p=>{g.beginPath();g.arc(X(p.t),Y(p.v),2.5,0,7);g.fill()});
- const q=sel&&cv._pts.find(o=>o.p.t.getTime()===sel);
+ if(PB.length){g.strokeStyle='#00acc1';g.lineWidth=1.5;g.beginPath();PB.forEach((p,k)=>k?g.lineTo(X(p.t),Y(p.v)):g.moveTo(X(p.t),Y(p.v)));g.stroke();g.fillStyle='#00acc1';PB.forEach(p=>g.fillRect(X(p.t)-2.5,Y(p.v)-2.5,5,5))}
+ const q=sel&&cv._pts.find(o=>o.s+o.p.t.getTime()===sel);
  if(q){g.fillStyle='#e91e63';g.beginPath();g.arc(q.x,q.y,5,0,7);g.fill();
-  const t=`${q.p.t.getMonth()+1}/${q.p.t.getDate()}  NDVI ${q.p.v.toFixed(3)}`;g.font='bold 11px sans-serif';
+  const t=`${B?q.s+' ':''}${q.p.t.getMonth()+1}/${q.p.t.getDate()}  NDVI ${q.p.v.toFixed(3)}`;g.font='bold 11px sans-serif';
   const w=g.measureText(t).width+8,bx=Math.min(Math.max(q.x-w/2,m.l),W-w-2),by=q.y<40?q.y+8:q.y-24;
   g.fillStyle='#fffe';g.fillRect(bx,by,w,16);g.strokeStyle='#e91e63';g.strokeRect(bx,by,w,16);g.fillStyle='#000';g.fillText(t,bx+4,by+12)}
 }
@@ -210,6 +212,28 @@ async function calcTemp(){
   if(id!==tcId)return}
  if(why)out.push(`<small>${why}</small>`);
  el.innerHTML=out.join('<br>');
+}
+// ---- 比較用の地点B ----
+let B=null,runIdB=0;
+const needB=()=>{if(!B)return false;const r=range(),w=B.win;return !w||r.t0<w.t0-1||r.t1>w.t1+1||B.cloud!=$('cloud').value};
+$('m3').onclick=()=>{if(!geom||geom.t!='p'){setMsg('先に地点Aを「点で取得」で選んでください。');return}setMode(3)};
+$('mb').onclick=()=>{if(B&&B.marker)map.removeLayer(B.marker);B=null;runIdB++;$('mb').style.display='none';$('lg').innerHTML='';draw($('ch')._raw||[])};
+function setB(ll){
+ if(B&&B.marker)map.removeLayer(B.marker);
+ B={ll,pts:[],win:null,cloud:null,marker:L.circleMarker(ll,{radius:6,color:'#fff',fillColor:'#00acc1',fillOpacity:1}).addTo(map)};
+ $('mb').style.display='';
+ $('lg').innerHTML='<span style="color:#2e7d32">● 地点A</span>　<span style="color:#00acc1">■ 地点B</span>';
+ seriesB();
+}
+async function seriesB(){
+ if(!B||!geom||geom.t!='p')return;
+ const id=++runIdB,b=B;b.pts=[];b.win=range();b.cloud=$('cloud').value;draw($('ch')._raw||[]);
+ let sc;try{sc=await search(b.ll)}catch(e){console.warn(e);setMsg('地点Bのシーン検索に失敗しました');return}
+ const list=[...sc].reverse();let i=0;
+ const worker=async()=>{while(i<list.length&&id===runIdB){const s=list[i++];
+  try{const v=await pixelNdvi(s,b.ll);if(v!=null)b.pts.push({t:new Date(s.properties.datetime),v})}catch(e){console.warn(e)}
+  if(id===runIdB)draw($('ch')._raw||[])}};
+ await Promise.all(Array.from({length:6},worker));
 }
 const ramp=[[0,[122,74,33]],[.2,[217,195,106]],[.4,[168,208,90]],[.65,[46,154,58]],[1,[11,93,30]]];
 function color(v){v=Math.max(0,Math.min(1,v));for(let i=1;i<ramp.length;i++)if(v<=ramp[i][0]){const[a,A]=ramp[i-1],[b,B]=ramp[i],t=(v-a)/(b-a);return A.map((x,k)=>x+(B[k]-x)*t)}return ramp[4][1]}
