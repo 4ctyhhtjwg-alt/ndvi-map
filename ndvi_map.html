@@ -86,12 +86,13 @@ function ctx(s){
  const p=s.properties, code=p['proj:epsg']||+String(p['proj:code']||'').replace(/\D/g,''), zone=code%100, south=Math.floor(code/100)==327;
  const utm=`+proj=utm +zone=${zone}${south?' +south':''} +datum=WGS84 +units=m +no_defs`;
  const a=s.assets.red, tr=a['proj:transform']||s.assets.red['proj:transform'];
- const bd=k=>{const b=(s.assets[k]['raster:bands']||[{}])[0];return {sc:b.scale??1e-4,of:b.offset??0}};
+ const ap=p['earthsearch:boa_offset_applied']===true; // 補正済みなら二重に引かない
+ const bd=k=>{const b=(s.assets[k]['raster:bands']||[{}])[0];return {sc:b.scale??1e-4,of:ap?0:(b.offset??0)}};
  return {utm,tr,r:bd('red'),n:bd('nir')};
 }
 const toPix=(c,lng,lat)=>{const [x,y]=proj4('EPSG:4326',c.utm,[lng,lat]);return [(x-c.tr[2])/c.tr[0],(y-c.tr[5])/c.tr[4]]};
 const toLL=(c,px,py)=>{const [lng,lat]=proj4(c.utm,'EPSG:4326',[c.tr[2]+px*c.tr[0],c.tr[5]+py*c.tr[4]]);return [lat,lng]};
-const ndvi=(c,r,n)=>{if(!r&&!n)return NaN;const R=r*c.r.sc+c.r.of,N=n*c.n.sc+c.n.of;return (N-R)/(N+R)};
+const ndvi=(c,r,n)=>{if(!r&&!n)return NaN;const R=r*c.r.sc+c.r.of,N=n*c.n.sc+c.n.of;const v=(N-R)/(N+R);return Math.abs(v)<=1?v:NaN};
 
 async function read(s,win,w,h){
  const [ri,ni]=await Promise.all([open(s.assets.red.href),open(s.assets.nir.href)]);
@@ -103,7 +104,8 @@ async function read(s,win,w,h){
 async function doPoint(s){
  const c=ctx(s), [px,py]=toPix(c,geom.ll.lng,geom.ll.lat).map(Math.floor);
  const d=await read(s,[px,py,px+1,py+1]), v=ndvi(c,d.R[0],d.N[0]);
- base=isNaN(v)?'この地点にはデータがありません。':`NDVI = ${v.toFixed(3)}　(${s.properties.datetime.slice(0,10)})`;setMsg(base);
+ const rr=d.R[0]*c.r.sc+c.r.of,nn=d.N[0]*c.n.sc+c.n.of,dt=s.properties.datetime.slice(0,10);
+ base=isNaN(v)?`この地点は欠測または範囲外です (${dt} 赤${rr.toFixed(3)} 近赤${nn.toFixed(3)} 補正${c.r.of})`:`NDVI = ${v.toFixed(3)}　(${dt} 赤${rr.toFixed(3)} 近赤${nn.toFixed(3)})`;setMsg(base);
 }
 
 let base='',runId=0;
