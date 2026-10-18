@@ -28,7 +28,7 @@
  <label><input type="checkbox" id="ov" checked> オーバーレイ</label>
 </div>
 <div id="map"></div>
-<div id="info">地図をクリックしてNDVIを取得します。<div id="mk" style="display:none;flex-wrap:wrap;gap:4px 8px;margin-top:6px;font-size:12px"><label style="color:#8d6e63">播種日<br><input type="date" id="d1" style="font-size:12px;width:112px"></label><label style="color:#1565c0">幼穂形成始期<br><input type="date" id="d4" style="font-size:12px;width:112px"></label><label style="color:#e65100">出穂日<br><input type="date" id="d2" style="font-size:12px;width:112px"></label><label style="color:#6a1b9a">成熟期<br><input type="date" id="d3" style="font-size:12px;width:112px"></label></div><canvas id="ch" style="display:none;width:100%;height:170px;margin-top:6px"></canvas><div id="tw" style="display:none"><div id="tc" style="margin-top:6px;font-size:12px;line-height:1.5"></div><details style="font-size:11px;margin-top:2px"><summary>気象庁観測所の設定</summary><select id="stt"><option value="s1">気象官署(s1)</option><option value="a1">アメダス(a1)</option></select> 都府県番号<input id="stp" size="3" value="87"> 地点番号<input id="stb" size="6" value="47830"></details></div><div id="legend"></div><div><span>0</span><span>0.5</span><span>1.0</span></div></div>
+<div id="info">地図をクリックしてNDVIを取得します。<div id="mk" style="display:none;flex-wrap:wrap;gap:4px 8px;margin-top:6px;font-size:12px"><label style="color:#8d6e63">播種日<br><input type="date" id="d1" style="font-size:12px;width:112px"></label><label style="color:#1565c0">幼穂形成始期<br><input type="date" id="d4" style="font-size:12px;width:112px"></label><label style="color:#e65100">出穂日<br><input type="date" id="d2" style="font-size:12px;width:112px"></label><label style="color:#6a1b9a">成熟期<br><input type="date" id="d3" style="font-size:12px;width:112px"></label></div><canvas id="ch" style="display:none;width:100%;height:170px;margin-top:6px"></canvas><div id="tw" style="display:none"><div id="tc" style="margin-top:6px;font-size:12px;line-height:1.5"></div><details style="font-size:11px;margin-top:2px"><summary>気象庁観測所の設定</summary><select id="stt"><option value="s1">気象官署(s1)</option><option value="a1">アメダス(a1)</option></select> 都府県番号<input id="stp" size="3" value="87"> 地点番号<input id="stb" size="6" value="47830"><br>中継URL(任意)<input id="stx" style="width:100%" placeholder="https://〜.workers.dev/?url="></details></div><div id="legend"></div><div><span>0</span><span>0.5</span><span>1.0</span></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
@@ -160,16 +160,19 @@ function draw(pts){
   g.fillStyle='#fffe';g.fillRect(bx,by,w,16);g.strokeStyle='#e91e63';g.strokeRect(bx,by,w,16);g.fillStyle='#000';g.fillText(t,bx+4,by+12)}
 }
 // ---- 気象庁 日平均気温 → 積算平均気温 ----
-const PROXY=['https://api.allorigins.win/raw?url=','https://corsproxy.io/?url='],TS={};let tcId=0;
-try{const v=JSON.parse(localStorage.getItem('ndvi_st')||'null');if(v){$('stt').value=v[0];$('stp').value=v[1];$('stb').value=v[2]}}catch(e){}
-['stt','stp','stb'].forEach(id=>$(id).onchange=()=>{try{localStorage.setItem('ndvi_st',JSON.stringify([$('stt').value,$('stp').value,$('stb').value]))}catch(e){}calcTemp()});
+const PROXY=['https://api.allorigins.win/raw?url=','https://corsproxy.io/?url=','https://api.codetabs.com/v1/proxy?quest='],TS={};
+const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;let tcId=0;
+try{const v=JSON.parse(localStorage.getItem('ndvi_st')||'null');if(v){$('stt').value=v[0];$('stp').value=v[1];$('stb').value=v[2];$('stx').value=v[3]||''}}catch(e){}
+['stt','stp','stb','stx'].forEach(id=>$(id).onchange=()=>{try{localStorage.setItem('ndvi_st',JSON.stringify([$('stt').value,$('stp').value,$('stb').value,$('stx').value]))}catch(e){}calcTemp()});
 async function jmaMonth(y,m){
  const type=$('stt').value,p=$('stp').value.trim(),b=$('stb').value.trim(),k=[type,p,b,y,m].join('-');
  if(TS[k])return TS[k];
  const u=`https://www.data.jma.go.jp/stats/etrn/view/daily_${type}.php?prec_no=${p}&block_no=${b}&year=${y}&month=${m}&day=1&view=`;
- let html=null;
- for(const px of PROXY){try{const r=await fetch(px+encodeURIComponent(u));if(r.ok){const t=await r.text();if(t.includes('data2_s')){html=t;break}}}catch(e){}}
- if(!html)throw new Error('気象庁のデータを取得できませんでした（観測所番号かプロキシを確認）');
+ let html=null;const errs=[],cx=$('stx').value.trim();
+ for(const px of (cx?[cx]:[]).concat(PROXY)){let h=px;try{h=new URL(px).hostname}catch(e){}
+  try{const r=await fetch(px+encodeURIComponent(u));if(!r.ok){errs.push(`${h}:HTTP${r.status}`);continue}
+   const t=await r.text();if(t.includes('data2_s')){html=t;break}errs.push(`${h}:表なし`)}catch(e){errs.push(`${h}:接続失敗`)}}
+ if(!html)throw new Error('気象庁データ取得失敗（'+errs.join(', ')+'）');
  const doc=new DOMParser().parseFromString(html,'text/html'),col=type=='s1'?6:4,out={};
  doc.querySelectorAll('table.data2_s tr').forEach(tr=>{const td=tr.querySelectorAll('td');if(td.length<=col)return;
   const d=parseInt(td[0].textContent);if(!d)return;const v=parseFloat(td[col].textContent);out[d]=isNaN(v)?null:v});
@@ -182,16 +185,30 @@ async function seg(a,b){ // a〜b（両端を含む）の日平均気温の合�
   v==null?miss++:(sum+=v,n++)}
  return {sum,n,miss};
 }
+async function segOM(a,b){
+ const l=geom&&geom.ll;if(!l)throw new Error('地点が未選択です');
+ const y=new Date();y.setDate(y.getDate()-1);const e=iso(y)<b?iso(y):b;
+ if(e<a)throw new Error('Open-Meteoの対象期間外です');
+ const k=`om-${l.lat.toFixed(3)}-${l.lng.toFixed(3)}-${a}-${e}`;let j=TS[k];
+ if(!j){const r=await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${l.lat}&longitude=${l.lng}&start_date=${a}&end_date=${e}&daily=temperature_2m_mean&timezone=Asia%2FTokyo`);
+  if(!r.ok)throw new Error('Open-Meteo HTTP'+r.status);j=TS[k]=await r.json()}
+ let sum=0,n=0;(j.daily.temperature_2m_mean||[]).forEach(v=>{if(v!=null){sum+=v;n++}});
+ const tot=Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/864e5)+1;
+ return {sum,n,miss:tot-n};
+}
 async function calcTemp(){
  const id=++tcId,el=$('tc'),[a,b,c]=['d1','d2','d3'].map(x=>$(x).value);
  const jobs=[['播種→出穂',a,b],['出穂→成熟',b,c]].filter(j=>j[1]&&j[2]);
  if(!jobs.length){el.textContent='播種日・出穂日・成熟期を入力すると、積算平均気温（気象庁の日平均気温の合計）を表示します。';return}
- el.textContent='気象庁データを取得中…';const out=[];
+ el.textContent='気象庁データを取得中…';const out=[];let why='';
  for(const [n,x,y] of jobs){
   try{if(y<x){out.push(`${n}: 日付の順序を確認してください`);continue}
-   const r=await seg(x,y);out.push(`<b>${n}</b>: ${r.sum.toFixed(1)}℃・日（${x.slice(5)}〜${y.slice(5)}、${r.n}日${r.miss?`、欠測・未観測${r.miss}日`:''}）`)}
+   let r,tag='';
+   try{r=await seg(x,y)}catch(err){try{r=await segOM(x,y);tag=' <span style="color:#c62828">※代替: Open-Meteo(再解析)</span>';why=err.message}catch(e2){throw err}}
+   out.push(`<b>${n}</b>: ${r.sum.toFixed(1)}℃・日（${x.slice(5)}〜${y.slice(5)}、${r.n}日${r.miss?`、欠測・未観測${r.miss}日`:''}）${tag}`)}
   catch(err){out.push(`${n}: ${err.message}`)}
   if(id!==tcId)return}
+ if(why)out.push(`<small>${why}</small>`);
  el.innerHTML=out.join('<br>');
 }
 const ramp=[[0,[122,74,33]],[.2,[217,195,106]],[.4,[168,208,90]],[.65,[46,154,58]],[1,[11,93,30]]];
