@@ -27,7 +27,7 @@
  <label><input type="checkbox" id="ov" checked> オーバーレイ</label>
 </div>
 <div id="map"></div>
-<div id="info">地図をクリックしてNDVIを取得します。<canvas id="ch" style="display:none;width:100%;height:150px;margin-top:6px"></canvas><div id="legend"></div><div><span>0</span><span>0.5</span><span>1.0</span></div></div>
+<div id="info">地図をクリックしてNDVIを取得します。<div id="mk" style="display:none;flex-wrap:wrap;gap:4px 8px;margin-top:6px;font-size:12px"><label style="color:#8d6e63">播種日<br><input type="date" id="d1" style="font-size:12px;width:112px"></label><label style="color:#e65100">出穂日<br><input type="date" id="d2" style="font-size:12px;width:112px"></label><label style="color:#6a1b9a">成熟期<br><input type="date" id="d3" style="font-size:12px;width:112px"></label></div><canvas id="ch" style="display:none;width:100%;height:170px;margin-top:6px"></canvas><div id="legend"></div><div><span>0</span><span>0.5</span><span>1.0</span></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
@@ -61,9 +61,9 @@ $('ov').onchange=()=>{if(overlay)$('ov').checked?overlay.addTo(map):map.removeLa
 $('days').onchange=$('cloud').onchange=()=>geom&&refresh(true);
 
 async function search(){
- const c=geom.t=='p'?geom.ll:geom.b.getCenter(), end=new Date(), start=new Date(end-$('days').value*864e5);
+ const c=geom.t=='p'?geom.ll:geom.b.getCenter(), rg=range(), start=new Date(rg.t0), end=new Date(rg.t1+864e5); win=rg;
  const body={collections:['sentinel-2-l2a'],intersects:{type:'Point',coordinates:[c.lng,c.lat]},
-  datetime:start.toISOString()+'/'+end.toISOString(),query:{'eo:cloud_cover':{lt:+$('cloud').value}},limit:geom.t=='p'?120:25,
+  datetime:start.toISOString()+'/'+end.toISOString(),query:{'eo:cloud_cover':{lt:+$('cloud').value}},limit:geom.t=='p'?200:25,
   sort:[{field:'properties.datetime',direction:'desc'}]};
  const r=await fetch('https://earth-search.aws.element84.com/v1/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
  if(!r.ok)throw new Error('STAC検索に失敗しました ('+r.status+')');
@@ -108,7 +108,15 @@ async function doPoint(s){
  base=isNaN(v)?`この地点は欠測または範囲外です (${dt} 赤${rr.toFixed(3)} 近赤${nn.toFixed(3)} 補正${c.r.of})`:`NDVI = ${v.toFixed(3)}　(${dt} 赤${rr.toFixed(3)} 近赤${nn.toFixed(3)})`;setMsg(base);
 }
 
-let base='',runId=0;
+let base='',runId=0,sel=null,win=null;
+const MK=[['d1','播種','#8d6e63'],['d2','出穂','#e65100'],['d3','成熟','#6a1b9a']];
+const mk=()=>MK.map(([id,n,c])=>({n,c,t:$(id).value?new Date($(id).value+'T00:00:00').getTime():null})).filter(o=>o.t);
+function range(){const t1=Date.now(),t0=t1-$('days').value*864e5,m=mk().map(o=>o.t);return {t0:Math.min(t0,...m),t1:Math.max(t1,...m)}}
+try{const v=JSON.parse(localStorage.getItem('ndvi_mk')||'[]');MK.forEach(([id],i)=>{if(v[i])$(id).value=v[i]})}catch(e){}
+MK.forEach(([id])=>$(id).onchange=()=>{
+ try{localStorage.setItem('ndvi_mk',JSON.stringify(MK.map(([i])=>$(i).value)))}catch(e){}
+ if(!geom||geom.t!='p')return;const r=range();
+ if(!win||r.t0<win.t0-1||r.t1>win.t1+1)refresh(true);else draw($('ch')._raw||[])});
 async function pixelNdvi(s,ll){
  const c=ctx(s),[px,py]=toPix(c,ll.lng,ll.lat).map(Math.floor);
  const [ri,ni,si]=await Promise.all([open(s.assets.red.href),open(s.assets.nir.href),open(s.assets.scl.href)]);
@@ -119,30 +127,42 @@ async function pixelNdvi(s,ll){
  const v=ndvi(c,R[0][0],N[0][0]);return isNaN(v)?null:v;
 }
 async function series(){
- const id=++runId,ll=geom.ll,pts=[],list=[...scenes].reverse();let i=0,done=0;
- $('ch').style.display='block';draw(pts);
+ sel=null;const id=++runId,ll=geom.ll,pts=[],list=[...scenes].reverse();let i=0,done=0;
+ $('ch').style.display='block';$('mk').style.display='flex';draw(pts);
  const worker=async()=>{while(i<list.length&&id===runId){const s=list[i++];
   try{const v=await pixelNdvi(s,ll);if(v!=null)pts.push({t:new Date(s.properties.datetime),v})}catch(e){console.warn(e)}
   done++;if(id===runId){draw(pts);setMsg(base+`　／ 時系列 ${done}/${list.length}シーン処理 (有効${pts.length})`)}}};
  await Promise.all(Array.from({length:6},worker));
 }
+$('ch').addEventListener('click',e=>{const cv=$('ch'),r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+ let best=null,bd=1e9;(cv._pts||[]).forEach(o=>{const d=Math.hypot(o.x-x,o.y-y);if(d<bd){bd=d;best=o}});
+ if(best&&bd<30){sel=best.p.t.getTime();draw(cv._raw)}});
 function draw(pts){
  const cv=$('ch'),dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;cv.width=W*dpr;cv.height=H*dpr;
  const g=cv.getContext('2d');g.scale(dpr,dpr);
- const P=[...pts].sort((a,b)=>a.t-b.t),m={l:28,r:8,t:8,b:18},t1=Date.now(),t0=t1-$('days').value*864e5;
+ const P=[...pts].sort((a,b)=>a.t-b.t),m={l:28,r:8,t:8,b:18},{t0,t1}=range();
  const lo=Math.min(0,...P.map(p=>p.v)),X=t=>m.l+(t-t0)/(t1-t0)*(W-m.l-m.r),Y=v=>m.t+(1-(v-lo))/(1-lo)*(H-m.t-m.b);
  g.font='10px sans-serif';g.fillStyle='#555';g.strokeStyle='#ddd';g.lineWidth=1;
  for(let v=Math.ceil(lo*5)/5;v<=1.001;v+=.2){g.beginPath();g.moveTo(m.l,Y(v));g.lineTo(W-m.r,Y(v));g.stroke();g.fillText(v.toFixed(1),2,Y(v)+3)}
  for(let k=0;k<=3;k++){const t=new Date(t0+(t1-t0)*k/3);g.fillText(`${t.getMonth()+1}/${t.getDate()}`,Math.min(X(+t)-8,W-30),H-4)}
+ mk().filter(o=>o.t>=t0&&o.t<=t1).forEach((o,i)=>{const x=X(o.t),d=new Date(o.t),t=`${o.n} ${d.getMonth()+1}/${d.getDate()}`;
+  g.strokeStyle=o.c;g.lineWidth=1.5;g.setLineDash([4,3]);g.beginPath();g.moveTo(x,m.t);g.lineTo(x,H-m.b);g.stroke();g.setLineDash([]);
+  g.font='bold 10px sans-serif';const w=g.measureText(t).width;g.fillStyle=o.c;g.fillText(t,x+w+4>W-m.r?x-w-3:x+3,m.t+10+i*11)});
+ cv._raw=pts;cv._pts=P.map(p=>({p,x:X(p.t),y:Y(p.v)}));
  if(!P.length){g.fillText('取得中…',m.l+10,H/2);return}
  g.strokeStyle='#2e7d32';g.lineWidth=1.5;g.beginPath();P.forEach((p,k)=>k?g.lineTo(X(p.t),Y(p.v)):g.moveTo(X(p.t),Y(p.v)));g.stroke();
  g.fillStyle='#2e7d32';P.forEach(p=>{g.beginPath();g.arc(X(p.t),Y(p.v),2.5,0,7);g.fill()});
+ const q=sel&&cv._pts.find(o=>o.p.t.getTime()===sel);
+ if(q){g.fillStyle='#e91e63';g.beginPath();g.arc(q.x,q.y,5,0,7);g.fill();
+  const t=`${q.p.t.getMonth()+1}/${q.p.t.getDate()}  NDVI ${q.p.v.toFixed(3)}`;g.font='bold 11px sans-serif';
+  const w=g.measureText(t).width+8,bx=Math.min(Math.max(q.x-w/2,m.l),W-w-2),by=q.y<40?q.y+8:q.y-24;
+  g.fillStyle='#fffe';g.fillRect(bx,by,w,16);g.strokeStyle='#e91e63';g.strokeRect(bx,by,w,16);g.fillStyle='#000';g.fillText(t,bx+4,by+12)}
 }
 const ramp=[[0,[122,74,33]],[.2,[217,195,106]],[.4,[168,208,90]],[.65,[46,154,58]],[1,[11,93,30]]];
 function color(v){v=Math.max(0,Math.min(1,v));for(let i=1;i<ramp.length;i++)if(v<=ramp[i][0]){const[a,A]=ramp[i-1],[b,B]=ramp[i],t=(v-a)/(b-a);return A.map((x,k)=>x+(B[k]-x)*t)}return ramp[4][1]}
 
 async function doRect(s){
- $('ch').style.display='none';runId++;
+ $('ch').style.display='none';$('mk').style.display='none';runId++;
  const c=ctx(s), b=geom.b, P=[[b.getWest(),b.getSouth()],[b.getEast(),b.getNorth()],[b.getWest(),b.getNorth()],[b.getEast(),b.getSouth()]].map(q=>toPix(c,...q));
  const xs=P.map(p=>p[0]),ys=P.map(p=>p[1]);
  let x0=Math.floor(Math.min(...xs)),x1=Math.ceil(Math.max(...xs)),y0=Math.floor(Math.min(...ys)),y1=Math.ceil(Math.max(...ys));
